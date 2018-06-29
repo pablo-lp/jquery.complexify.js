@@ -1,15 +1,16 @@
 /*
   http://github.com/danpalmer/jquery.complexify.js
-
-  This code is distributed under the WTFPL v2:
+  Modified by Pablo Luaces on 21/6/2018
 */
+
 (function ($) {
 
   $.fn.extend({
     complexify: function(options, callback) {
 
-      var MIN_COMPLEXITY = 49; // 12 chars with Upper, Lower and Number
-      var MAX_COMPLEXITY = 120; //  25 chars, all charsets
+      var MIN_COMPLEXITY = 50;
+      var MAX_COMPLEXITY = 100;
+
       var CHARSETS = [
         // Commonly Used
         ////////////////////
@@ -114,9 +115,7 @@
 
       var defaults = {
         minimumChars: 8,
-        strengthScaleFactor: 1,
-        bannedPasswords: window.COMPLEXIFY_BANLIST || [],
-        banMode: 'strict' // (strict|loose)
+        strengthScaleFactor: 1
       };
 
       if($.isFunction(options) && !callback) {
@@ -129,57 +128,56 @@
       function additionalComplexityForCharset(str, charset) {
         for (var i = str.length - 1; i >= 0; i--) {
           if (charset[0] <= str.charCodeAt(i) && str.charCodeAt(i) <= charset[1]) {
-            return charset[1] - charset[0] + 1;
+            var charsetVal = charset[1] - charset[0] + 1;
+            return (charsetVal > 50)? 50:charsetVal;
           }
         }
+
         return 0;
       }
 
-      function inBanlist(str) {
-        if (options.banMode === 'strict') {
-          for (var i = 0; i < options.bannedPasswords.length; i++) {
-            if (str.toLowerCase().indexOf(options.bannedPasswords[i].toLowerCase()) !== -1) {
-                return true;
-            }
-          }
-          return false;
-        } else {
-          return $.inArray(str, options.bannedPasswords) > -1 ? true : false;
-        }
+      function complexityRestriction(passLength, complexity){
+        if(passLength < Math.ceil(options.minimumChars/4 * 1) && complexity > 10) return 10;
+        else if(passLength < Math.ceil(options.minimumChars/4 * 2) && complexity > 20) return 20;
+        else if(passLength < Math.ceil(options.minimumChars/4 * 3) && complexity > 30) return 30;
+        else if(passLength < options.minimumChars && complexity > 40) return 40;
+        return complexity;
       }
 
       function evaluateSecurity() {
         var password = $(this).val();
         var complexity = 0, valid = false;
 
-        // Reset complexity to 0 when banned password is found
-        if (!inBanlist(password)) {
+        // Get only one char if all are the same
+        if (password.match(/^(.)\1+$/)) password = password.charAt(0);
 
-          // Add character complexity
-          for (var i = CHARSETS.length - 1; i >= 0; i--) {
-            complexity += additionalComplexityForCharset(password, CHARSETS[i]);
-          }
+  	    // Add character complexity
+  	    for (var i = CHARSETS.length - 1; i >= 0; i--) {
+  	      complexity += additionalComplexityForCharset(password, CHARSETS[i]);
+  	    }
 
-        } else {
-          complexity = 1;
-        }
-
-        // Use natural log to produce linear scale
-        complexity = Math.log(Math.pow(complexity, password.length)) * (1/options.strengthScaleFactor);
-
-        valid = (complexity > MIN_COMPLEXITY && password.length >= options.minimumChars);
+        complexity += Math.floor(password.length / options.minimumChars);
+        complexity = complexity * (1/options.strengthScaleFactor);
 
         // Scale to percentage, so it can be used for a progress bar
         complexity = (complexity / MAX_COMPLEXITY) * 100;
-        complexity = (complexity > 100) ? 100 : complexity;
 
+	    // Limit complexity value based on password length
+	    complexity = complexityRestriction(password.length, complexity);
+
+	    // Scale complexity
+	    complexity = complexity * (1/options.strengthScaleFactor);
+
+	    // Limit and round
+	    complexity = (complexity > 100) ? 100 : Math.round(complexity * 100) / 100;
+
+	    // Check password
+      var valid = (complexity >= MIN_COMPLEXITY && password.length >= options.minimumChars);
         callback.call(this, valid, complexity);
       }
 
       this.each(function () {
-      	if($(this).val()) {
-          evaluateSecurity.apply(this);
-        }
+        evaluateSecurity.apply(this);
       });
 
       return this.each(function () {
